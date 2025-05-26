@@ -1,0 +1,46 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <esp_now.h>
+
+struct Payload {             // samme layout som hos receiver
+  char  id[10]   = "BATT-1"; // hardkodet ID (kan hentes fra EEPROM senere)
+  float temp     = 25.0;
+  float cells[10];
+};
+
+//uint8_t peerMac[6] = {0xB0,0xA7,0x32,0xDE,0x16,0xB8};
+uint8_t peerMac[6] = {0xB0,0xA7,0x32,0xDE,0xE2,0x24};
+
+void setup(){
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+
+  Serial.print("Sender MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.print("📡 IP: "); Serial.println(WiFi.localIP());
+
+  if (esp_now_init() != ESP_OK){
+    Serial.println("ESP-NOW init failed");
+    while(true) delay(1000);
+  }
+
+  esp_now_peer_info_t peer{};
+  memcpy(peer.peer_addr, peerMac, 6);
+  esp_now_add_peer(&peer);
+
+  Serial.println("Sender ready");
+}
+
+
+void loop(){
+  /* fyld dummy-data */
+  Payload p;
+  p.temp = random(240, 320) / 10.0;       // 24.0-32.0 °C
+  for (int i=0;i<10;i++) p.cells[i] = 4.20 - i*0.02;
+
+  esp_err_t rc = esp_now_send(peerMac, (uint8_t*)&p, sizeof(p));
+  Serial.printf("Send status: %s (%d bytes)\n",
+                rc==ESP_OK ? "OK" : esp_err_to_name(rc),
+                sizeof(p));
+  delay(1000);
+}
