@@ -1,0 +1,96 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+/* --- Net --- */
+const char* MQTT_HOST = "172.20.10.2";
+const char* WIFI_SSID = "BertramPhone";
+const char* WIFI_PW   = "okayokay";
+
+/* --- Net 2 --- */
+//const char* MQTT_HOST = "192.168.1.231";
+//const char* WIFI_SSID = "Zyxel_638B";
+//const char* WIFI_PW   = "R3_dEAT7kH";
+
+WiFiClient spine;
+PubSubClient mqtt(spine);
+
+/* --- Payload --- */
+struct Payload { char id[10]; float temp; float cells[10]; };
+
+void publishToMqtt(const Payload& p) {
+  StaticJsonDocument<256> doc;
+  doc["id"] = p.id;
+  doc["temp"] = p.temp;
+  JsonArray c = doc.createNestedArray("cells");
+  for (float v : p.cells) c.add(v);
+
+  char buf[256];
+  size_t n = serializeJson(doc, buf);
+
+  if (!mqtt.connected()) {
+    Serial.println("🔌 MQTT disconnected – reconnecting...");
+    mqtt.connect("espReceiver");
+  }
+
+  mqtt.publish("batteri/telemetry", buf, n);
+  Serial.print("📡 MQTT batt-telemetry → ");
+  Serial.println(buf);
+}
+
+void onReceive(const uint8_t* mac, const uint8_t* data, int len) {
+  Serial.printf("📦 ESP-NOW callback! Len=%d\n", len);
+
+  if (len != sizeof(Payload)) {
+    Serial.printf("❌ Len mismatch! Expected %d, got %d\n", sizeof(Payload), len);
+    return;
+  }
+
+  Payload p;
+  memcpy(&p, data, sizeof(p));
+  Serial.printf("✅ Received: ID=%s Temp=%.1f\n", p.id, p.temp);
+  publishToMqtt(p);
+  }
+
+void setup() {
+  Serial.begin(115200);
+
+  // Print Wi-Fi og scan
+  Serial.print("MAC: "); Serial.println(WiFi.macAddress());
+  Serial.println("🔍 Scanning Wi-Fi...");
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; i++) {
+    Serial.printf("  %s (%ddBm)\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+  }
+
+  uint8_t senderMac[6] = {0xB0, 0xA7, 0x32, 0xDE, 0x16, 0xB8};
+
+  // Wi-Fi
+  WiFi.mode(WIFI_STA);
+  Serial.print("📶 Connecting to Wi-Fi ");
+  WiFi.begin(WIFI_SSID, WIFI_PW);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println(" OK");
+  Serial.print("📡 IP: "); Serial.println(WiFi.localIP());
+
+  // MQTT
+  mqtt.setServer(MQTT_HOST, 1883);
+  mqtt.connect("espReceiver");
+
+  // ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("❌ ESP-NOW init failed");
+    while (true) delay(1000);
+  }
+  esp_now_register_recv_cb(onReceive);
+  Serial.println("✅ ESP-NOW ready");
+}
+
+void loop() {
+  mqtt.loop();
+}
