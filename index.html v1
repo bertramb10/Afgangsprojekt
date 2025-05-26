@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <title>Battery Discharge Dashboard</title>
+
+  <!-- Google Font + Bootstrap -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Font-awesome (kun ikoner) -->
+  <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+
+  <!-- SVG-sprite til alerts  -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="check-circle-fill" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 1 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.08-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+    </symbol>
+    <symbol id="exclamation-triangle-fill" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.46.78.09 1.767.98 1.767h13.71c.89 0 1.44-.988.98-1.767L8.982 1.566zM8 5c.53 0 .95.46.9.995l-.35 3.507a.55.55 0 0 1-1.1 0L7.1 5.995A.9.9 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+    </symbol>
+  </svg>
+
+  <!-- CSS -->
+  <style>
+    body{margin:0;font-family:Poppins,sans-serif;background:var(--main-grad);}
+    /* Topbar */
+    #top-bar{position:relative;background:transparent; padding:20px 40px;border-bottom:2px solid rgba(255,255,255,0.35);border-color: #000;}
+    #dashboard-title{position:absolute;margin:0;font-size:1.6rem;color:#fff;font-weight:600;font-style:bold;}
+    #weather-icon {
+    display: block;
+
+  }
+
+    .topbar-wave {
+    position: absolute;
+    bottom: -1px;       /* overlapper lidt */
+    left: 0;
+    width: 100%;
+    height: 15px;       /* lavere højde end de 80px, så bølgen bliver mindre */
+    z-index: 1;
+    pointer-events: none;
+  }
+
+    .topbar-badge {
+    position: absolute;
+    top: 67%;            /* lige under topbar’ens bund */
+    left: 50%;            /* centreret horisontalt */
+    transform: translate(-50%, -50%); /* hæv lidt så den overlapper */
+    background: #beeffc;
+    padding: 30px 50px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #050103;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    z-index: 5;           /* over bølge og alt andet */
+
+    clip-path: polygon(0% 0%, 100% 0%, 80% 100%, 20% 100%);
+  }
+
+  #dashboard-title.shiny{
+    background: linear-gradient(
+      120deg,
+      #dd2323 0%,
+      #ffc300 30%,
+      #dd2323 60%,
+      #ffc300 100%
+    );
+
+    background-size: 250% 100%;
+    background-position: -100% 0;
+  
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+            background-color: text;
+            background-clip: text;
+
+    animation: shine 8s linear infinite;
+  }
+
+  @keyframes shine {
+    0% { background-position: 0% 0; }
+    100% { background-position: 100% 0; }
+  }
+
+    .info-item.weather-item {
+    display: flex;
+    align-items: center;justify-content: right;color:#fff;
+    gap: 0.5rem;
+  }
+
+  
+
+    /* Grid */
+    #battery-area{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:2000px;margin:40px 10px}
+
+    .battery-box{
+      position:relative;background:#beeffc;border:3.5px solid #0a0009;border-radius:8px;padding:15px;box-shadow: 
+    8px 8px 16px rgba(0,0,0,0.1),
+   -8px -8px 50px rgba(255,255,255,0.7);
+   transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .battery-box h4{
+      margin:0 0 10px;font-size:1.05rem;color:#000
+    }
+
+      .battery-box:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  }
+
+    .battery-alert{
+      position:absolute;top:8px;right:8px;z-index:3;padding:6px 10px
+    }
+
+    /* celler */
+    .batt-cells{display:grid;grid-template-columns:repeat(5,30px);gap:10px;border-radius: 50%;
+      transition: background 0.3s, transform 0.3s;}
+    .cell{width:30px;height:30px;border-radius:4px;line-height:30px;font-size:.75rem;text-align:center;background:#ccc;color:#333}
+    .cell:hover { transform: scale(1.1);}
+    .cell.afladt {background:#09d509}
+    .cell.afladt:hover { transform: scale(1.1);}
+    .cell.aflader{background:#3232dd}
+    .cell.aflader:hover { transform: scale(1.1);}
+    .cell.maaler {background:#ff0}
+    .cell.maaler:hover { transform: scale(1.1);}
+    .cell.afbrudt{background:#f00}
+    .cell.afbrudt:hover { transform: scale(1.1);}
+
+    /* Gradient */
+    :root{
+  --main-grad: linear-gradient(135deg,#3702f5,#0c0113);
+}
+
+  html {
+    height: 100%;
+  }
+
+  </style>
+</head>
+<body>
+  
+  <div id="top-bar">
+    <!-- Bølge-SVG m. GRADIENT i bunden -->
+    <svg class="topbar-wave" viewBox="0 0 1440 320" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="waveGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%"  stop-color="#383838" />
+          <stop offset="95%" stop-color="#050103" />
+        </linearGradient>
+      </defs>
+      <path fill="url(#waveGradient)" fill-opacity="1"
+        d="M0,192L40,186.7C80,181,160,171,240,154.7C320,139,400,117,480,138.7C560,160,640,224,720,224
+           C800,224,880,160,960,160C1040,160,1120,224,1200,224C1280,224,1360,160,1400,128L1440,96L1440,320
+           L1400,320C1360,320,1280,320,1200,320C1120,320,1040,320,960,320C880,320,800,320,720,320
+           C640,320,560,320,480,320C400,320,320,320,240,320C160,320,80,320,40,320L0,320Z">
+      </path>
+    </svg>
+
+    <h1 id="dashboard-title">Battery Discharge Dashboard</h1>
+    <div class="topbar-badge">Baisikeli</div>
+    <div class="info-item weather-item">
+      <img id="weather-icon" alt="" width="24" height="24" />
+      <span id="weather-info">Henter vejr…</span>
+    </div>
+  </div>
+
+  <div id="battery-area">
+    <script>
+      const ids = [...Array(8)].map((_, i) => `BATT-${1001 + i}`);
+      document.currentScript.outerHTML = ids.map(id => `
+        <div class="battery-box" data-id="${id}">
+          <h4>ID: ${id}</h4>
+          <p>Spænding: <span class="batt-voltage">--</span></p>
+          <p>Temp: <span class="batt-temp">--</span></p>
+          <p>Tid: <span class="batt-time">--</span></p>
+          <p>ETA: <span class="batt-eta">--</span></p>
+          <div class="batt-cells">
+            ${[...Array(10)].map((_, i) => `<div class="cell">C${i + 1}</div>`).join('')}
+          </div>
+          <div class="alert d-flex align-items-center d-none battery-alert" role="alert">
+            <svg class="bi me-2" width="20" height="20">
+              <use xlink:href="#check-circle-fill" />
+            </svg>
+            <span class="alert-msg"></span>
+          </div>
+        </div>
+      `).join('');
+    </script>
+  </div>
+
+  <script>
+    const HIGH_TEMP_LIMIT = 50;
+    const socket = new WebSocket('ws://' + window.location.hostname + ':3000');
+    socket.onmessage = e => {
+      try {
+        const data = JSON.parse(e.data);
+        console.log("🔁 Data received via WebSocket:", data);
+        updateBattery(data);
+      } catch (err) {
+        console.error("WS parse error:", err);
+      }
+    };
+
+    function cellStatus(voltage) {
+      if (voltage < 3.0)      return "afbrudt";
+      if (voltage < 3.3)      return "afladt";
+      if (voltage < 3.7)      return "aflader";
+      return "maaler";  // alt OK
+    }
+
+    function updateBattery(batt){
+      const normalizedId = batt.id.includes('-') && batt.id.split('-')[1].length < 4
+        ? batt.id.replace(/BATT-(\d+)/, (_, n) => `BATT-${1000 + +n}`)
+        : batt.id;
+
+      const box = document.querySelector(`.battery-box[data-id="${normalizedId}"]`);
+      if(!box) return;
+
+      box.querySelector('.batt-voltage').textContent = batt.cells[0].toFixed(2);  // eller beregn gennemsnit
+      box.querySelector('.batt-temp').textContent    = batt.temp.toFixed(1) + " °C";
+
+      const alert=box.querySelector('.battery-alert');
+      const useEl=alert.querySelector('use');
+      const text =alert.querySelector('.alert-msg');
+      const cells=box.querySelectorAll('.cell');
+
+      /* farv celler */
+      batt.cells.forEach((v,i)=>{
+        if (cells[i]) {
+          const status = cellStatus(v); // lav status fra volt
+          cells[i].className = 'cell ' + status;
+        }
+      });
+      for(let i=batt.cells.length;i<cells.length;i++)cells[i].className='cell';
+
+      /* status-check */
+      const filled=[...batt.cells];while(filled.length<10)filled.push('x');
+      const alleAfladt = filled.every(v => cellStatus(v) === 'afladt');
+      const tempHoj = batt.temp >= HIGH_TEMP_LIMIT;
+      const afbrudt = batt.cells.some(v => cellStatus(v) === 'afbrudt');
+
+      if(tempHoj || afbrudt){
+        alert.classList.remove('d-none','alert-success');
+        alert.classList.add('alert-danger');
+        useEl.setAttribute('xlink:href','#exclamation-triangle-fill');
+        text.textContent = tempHoj
+        ? `Afladning afbrudt – temp ${batt.temp.toFixed(1)} °C`
+        : 'Afladning afbrudt!';
+      }else if(alleAfladt){
+        alert.classList.remove('d-none','alert-danger');
+        alert.classList.add('alert-success');
+        useEl.setAttribute('xlink:href','#check-circle-fill');
+        text.textContent='Batteriet er fuldt afladt ✔';
+      }else{
+        alert.classList.add('d-none');
+      }
+    }
+
+    window.updateBattery=updateBattery;
+  </script>
+  
+  <script>
+    const OWM_API_KEY = '4899718a428164651ea7ac5177546871';            
+    const CITY       = 'Slangerup,DK';               
+    const URL        = `https://api.openweathermap.org/data/2.5/weather?q=${CITY}&units=metric&lang=da&appid=${OWM_API_KEY}`;
+  
+    async function hentVejr() {
+      try {
+        const res  = await fetch(URL);
+        if (!res.ok) throw new Error('Netværksfejl');
+        const data = await res.json();
+  
+        // 1) Temperatur + beskrivelse
+        const temp = Math.round(data.main.temp);
+        //const desc = data.weather[0].description;      // fx "skyet"
+  
+        // 2) Ikonkode fra OWM (fx "03d")
+        const iconCode = data.weather[0].icon;
+        const iconUrl  = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
+  
+        // 3) Opdater DOM
+        document.getElementById('weather-info').textContent = `${temp}°C`;
+        document.getElementById('weather-icon').src = iconUrl;
+  
+      } catch(err) {
+        console.error('Kunne ikke hente vejr:', err);
+        document.getElementById('weather-info').textContent = 'Vejr ukendt';
+      }
+    }
+  
+    // Kør ved load, og evt. med interval:
+    window.addEventListener('DOMContentLoaded', hentVejr);
+    // Opdater hvert min:
+    setInterval(hentVejr, 1 * 60 * 1000);
+  </script>
+  
+
+</body>
+</html>
