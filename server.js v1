@@ -1,0 +1,39 @@
+const fs       = require("fs");
+const http     = require("http");
+const path     = require("path");
+const express  = require("express");
+const WebSocket= require("ws");
+const mqtt     = require("mqtt");
+
+const app = express();
+app.use(express.static(path.join(__dirname))); // serve index.html and assets
+
+const server = http.createServer(app);
+const wss    = new WebSocket.Server({ server });
+
+// --- MQTT connection ---
+const mclient = mqtt.connect("mqtt://172.20.10.2");
+
+mclient.on("connect", () => {
+  console.log("MQTT connected");
+  mclient.subscribe("batteri/telemetry");
+});
+
+mclient.on("message", (topic, msg) => {
+  // Broadcast MQTT data to all WebSocket clients
+  const json = msg.toString();
+  console.log("→ MQTT:", json);
+  wss.clients.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(json);
+  });
+});
+
+// --- WebSocket logs only ---
+wss.on("connection", ws => {
+  console.log("WebSocket client connected");
+});
+
+// --- Start server ---
+server.listen(3000, '0.0.0.0', () => {
+  console.log("🌍 Dashboard running on all interfaces");
+});
