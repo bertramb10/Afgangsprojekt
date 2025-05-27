@@ -1,0 +1,274 @@
+from machine import Pin, SoftI2C, Timer
+from time import sleep
+from ads1x15 import ADS1115
+from neopixel import NeoPixel
+import onewire, ds18x20
+
+# ───── Konfiguration ─────
+RELAY_MAIN_PIN = 4
+FAN_PIN = 5
+BUTTON_PIN = 16
+NEOPIXEL_PIN = 15
+NUM_PIXELS = 10
+SCL_PIN = 21
+SDA_PIN = 22
+TEMP_PINS = [2, 13]
+TEMP_THRESHOLD_MAX = 35
+TEMP_THRESHOLD_MIN = 28
+temp_counter = 0
+
+kører = False
+afladning_tilladt = True
+low_voltage_cells = set()
+
+# ───── NeoPixel funktioner ─────
+np = NeoPixel(Pin(NEOPIXEL_PIN), NUM_PIXELS)
+rainbow_index = 0
+
+def hsv_to_rgb(h, s, v):
+    i = int(h * 6)
+    f = h * 6 - i
+    p = v * (1 - s)
+    q = v * (1 - f * s)
+    t = v * (1 - (1 - f) * s)
+    i = i % 6
+    if i == 0: return v, t, p
+    if i == 1: return q, v, p
+    if i == 2: return p, v, t
+    if i == 3: return p, q, v
+    if i == 4: return t, p, v
+    if i == 5: return v, p, q
+
+def flash_green_done():
+    for _ in range(5):
+        for i in range(NUM_PIXELS):
+            np[i] = (0, 255, 0)
+        np.write()
+        sleep(0.3)
+        clear_pixels()
+        sleep(0.3)
+
+def rainbow_wave_idle():
+    global rainbow_index
+    for i in range(NUM_PIXELS):
+        hue = ((rainbow_index + i * 8) % 256) / 256.0
+        r, g, b = hsv_to_rgb(hue, 1.0, 0.4)
+        np[i] = (int(r * 255), int(g * 255), int(b * 255))
+    np.write()
+    rainbow_index = (rainbow_index + 5) % 256
+
+def vis_måling_relay(idx):
+    for i in range(NUM_PIXELS):
+        np[i] = (0, 255, 0) if i in low_voltage_cells else (0, 0, 0)
+    np[idx] = (255, 0, 0)
+    np.write()
+
+def vis_afladning_lys():
+    for i in range(NUM_PIXELS):
+        np[i] = (255, 100, 0)
+    np.write()
+
+def vis_pause_temp_wave():
+    global rainbow_index
+    for i in range(NUM_PIXELS):
+        hue = ((i * 10 + rainbow_index) % 256) / 255.0
+        r, g, b = hsv_to_rgb(0.15, 1, 0.5)
+        np[i] = (int(r * 240), int(g * 255), int(b * 255))
+    for i in low_voltage_cells:
+        np[i] = (0, 255, 0)
+    np.write()
+    rainbow_index = (rainbow_index + 2) % 256
+
+def vis_fejl_wave():
+    global rainbow_index
+    for i in range(NUM_PIXELS):
+        r, g, b = hsv_to_rgb(0.6, 1, 0.3)
+        np[i] = (int(r * 255), int(g * 255), int(b * 255))
+    np.write()
+    rainbow_index = (rainbow_index + 2) % 256
+
+def clear_pixels():
+    for i in range(NUM_PIXELS):
+        np[i] = (0, 0, 0)
+    np.write()
+
+# ───── Relæer og hardware ─────
+relay_pins = [19, 18, 32, 33, 25, 26, 27, 14, 12, 23]
+relays = [Pin(p, Pin.OUT) for p in relay_pins]
+relay_main = Pin(RELAY_MAIN_PIN, Pin.OUT)
+fan = Pin(FAN_PIN, Pin.OUT)
+button = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
+
+relay_main.value(0)
+fan.value(0)
+for r in relays:
+    r.value(0)
+clear_pixels()
+
+# ───── Temperatur (OneWire) ─────
+temp_buses = []
+for p in TEMP_PINS:
+    ds = ds18x20.DS18X20(onewire.OneWire(Pin(p)))
+    roms = ds.scan()
+    print("Bus GPIO {}: {}".format(p, roms))
+    temp_buses.append((ds, roms))
+if not any(roms for _, roms in temp_buses):
+    raise RuntimeError("❌ Ingen DS18B20 fundet!")
+
+# ───── ADS1115 opsætning ─────
+i2c = SoftI2C(scl=Pin(SCL_PIN), sda=Pin(SDA_PIN))
+ads = ADS1115(i2c, address=0x48, gain=1)
+
+class StopProgram(Exception):
+    pass
+
+def knap_trykket(pin):
+    global kører
+    kører = False
+
+button.irq(trigger=Pin.IRQ_FALLING, handler=knap_trykket)
+
+def temp_loop(timer):
+    global afladning_tilladt, temp_counter
+    try:
+        temp_counter += 1
+        for ds, _ in temp_buses:
+            ds.convert_temp()
+        sleep(0.75)
+        for bus_idx, (ds, roms) in enumerate(temp_buses, 1):
+            for rom in roms:
+                t = ds.read_temp(rom)
+                if temp_counter % 3 == 0:
+                    print("🌡 Temp bus {} (GPIO {}), sensor {}: {:.1f}°C"
+                          .format(bus_idx, TEMP_PINS[bus_idx-1], rom.hex(), t))
+                if t >= TEMP_THRESHOLD_MAX:
+                    if afladning_tilladt:
+                        print("🚫 Afladning PAUSET (for varm)")
+                    afladning_tilladt = False
+                elif t <= TEMP_THRESHOLD_MIN:
+                    if not afladning_tilladt:
+                        print("✅ Afladning GENOPTAGET")
+                    afladning_tilladt = True
+    except Exception as e:
+        print("⚠️ Temperaturfejl:", e)
+        vis_fejl_wave()
+
+def mål_diff_A0_A1():
+    try:
+        raw = ads.read(channel1=0, channel2=1)
+        volt = ads.raw_to_v(raw)
+        return volt
+    except OSError as e:
+        print("⚠️ I2C-fejl:", e)
+        vis_fejl_wave()
+        return None
+
+def check_stop():
+    if not kører:
+        raise StopProgram()
+
+def mål_alle_relæer():
+    for idx, relay in enumerate(relays):
+        check_stop()
+        for r in relays:
+            r.value(0)
+        vis_måling_relay(idx)
+        sleep(1)
+        check_stop()
+        relay.value(1)
+        sleep(2)
+        check_stop()
+        spænding = mål_diff_A0_A1()
+        if spænding is not None:
+            print(f"Spænding A0 - A1: {spænding:.3f} V")
+            if spænding > -0.8:
+                low_voltage_cells.add(idx)
+        else:
+            print("⚠️ Måling mislykkedes")
+        relay.value(0)
+        sleep(1)
+        check_stop()
+
+def afladning():
+    global afladning_tilladt
+    print("\n⚡ Afladning via hovedrelæ (styret af temperatur)...")
+    tændt = False
+    for i in range(10):
+        check_stop()
+        if afladning_tilladt:
+            vis_afladning_lys()
+            if not tændt:
+                relay_main.value(1)
+                fan.value(1)
+                tændt = True
+                print("→ Afladning TÆNDT")
+        else:
+            vis_pause_temp_wave()
+            if tændt:
+                relay_main.value(0)
+                fan.value(0)
+                tændt = False
+                print("→ Afladning SLUKKET midlertidigt")
+        sleep(1)
+    relay_main.value(0)
+    fan.value(0)
+    print("⏹ Afladning slut.")
+
+temp_timer = Timer(-1)
+temp_timer.init(period=5000, mode=Timer.PERIODIC, callback=temp_loop)
+
+while True:
+    try:
+        if button.value() == 0:
+            sleep(0.3)
+            while button.value() == 0:
+                pass
+            kører = not kører
+            if kører:
+                print("\n▶️ Program STARTET")
+            else:
+                print("\n⏹ Program STOPPET")
+                relay_main.value(0)
+                fan.value(0)
+                for r in relays:
+                    r.value(0)
+                clear_pixels()
+                continue
+
+        if kører:
+            try:
+                mål_alle_relæer()
+                afladning()
+                mål_alle_relæer()
+                if len(low_voltage_cells) == NUM_PIXELS:
+                    print("✅ Alle celler under tærskel – afladning fuldført!")
+                    flash_green_done()
+                    kører = False
+                    relay_main.value(0)
+                    fan.value(0)
+                    for r in relays:
+                        r.value(0)
+                    clear_pixels()
+                    continue
+                print("🔁 Ny cyklus starter om lidt...\n")
+                sleep(2)
+            except StopProgram:
+                print("⏹ Program afbrudt.")
+                kører = False
+                temp_timer.deinit()
+                relay_main.value(0)
+                fan.value(0)
+                for r in relays:
+                    r.value(0)
+                clear_pixels()
+        else:
+            rainbow_wave_idle()
+            sleep(0.1)
+    except KeyboardInterrupt:
+        print("\nAfslutter program...")
+        temp_timer.deinit()
+        break
+
+
+
+
