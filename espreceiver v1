@@ -5,14 +5,14 @@
 #include <ArduinoJson.h>
 
 /* --- Net --- */
-const char* MQTT_HOST = "172.20.10.2";
-const char* WIFI_SSID = "BertramPhone";
-const char* WIFI_PW   = "okayokay";
+const char* MQTT_HOST = "HOST_IP";
+const char* WIFI_SSID = "WIFISSID";
+const char* WIFI_PW   = "WIFIPASS";
 
 /* --- Net 2 --- */
-//const char* MQTT_HOST = "192.168.1.231";
-//const char* WIFI_SSID = "Zyxel_638B";
-//const char* WIFI_PW   = "R3_dEAT7kH";
+//const char* MQTT_HOST = "HOST_IP";
+//const char* WIFI_SSID = "WIFISSID";
+//const char* WIFI_PW   = "WIFIPASS";
 
 WiFiClient spine;
 PubSubClient mqtt(spine);
